@@ -278,6 +278,20 @@ async def run_vip_loop(req: VIPRequest):
     logs = []
     client = Groq(api_key=GROQ_API_KEY)
     
+    req_email = req.sender_email or os.getenv("SENDER_EMAIL")
+    req_pw = req.app_password or os.getenv("APP_PASSWORD")
+    req_name = req.founder_name or os.getenv("FOUNDER_NAME")
+    import sqlite3
+    conn = sqlite3.connect("pr_nexus.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT active_url FROM settings WHERE id = 1")
+    row = cursor.fetchone()
+    conn.close()
+    db_url = row[0] if row and row[0] else ""
+    req_url = req.website_url or db_url or os.getenv("WEBSITE_URL")
+    if not req_email or not req_pw or not req_url:
+        logs.append("> [X] ERROR: Missing Credentials in Env Vars.")
+        return {"status": "error", "logs": logs}
     logs.append(f"> [🕸️] Requesting URL: {req_url}")
     scraped_text = scrape_website_text(req_url)
     logs.append(f"> [🧠] Analyzing website context via AI...")
