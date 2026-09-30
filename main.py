@@ -26,7 +26,15 @@ async def autonomous_24_7_loop():
         email = os.getenv("SENDER_EMAIL")
         app_pw = os.getenv("APP_PASSWORD")
         name = os.getenv("FOUNDER_NAME")
-        url = os.getenv("WEBSITE_URL")
+        
+        # 1. Try to get URL from DB (Frontend UI)
+        conn = sqlite3.connect('pr_nexus.db')
+        c = conn.cursor()
+        c.execute("SELECT active_url FROM settings WHERE id = 1")
+        row = c.fetchone()
+        conn.close()
+        
+        url = row[0] if row and row[0] else os.getenv("WEBSITE_URL")
         
         if email and app_pw and name and url:
             print("[*] 24/7 AUTO-PILOT WAKING UP...")
@@ -65,6 +73,11 @@ def init_db():
                   pitch_text TEXT,
                   status TEXT,
                   timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS settings
+                 (id INTEGER PRIMARY KEY, active_url TEXT)''')
+    c.execute("INSERT OR IGNORE INTO settings (id, active_url) VALUES (1, '')")
+    
     conn.commit()
     conn.close()
 
@@ -349,6 +362,27 @@ async def run_vip_loop(req: VIPRequest):
 
     logs.append(f"\n> [🤖] Phase 1 (Pitching) complete. Total Pitches Sent: {pitch_count}")
     return {"status": "success", "logs": logs}
+
+class ClientSettings(BaseModel):
+    website_url: str
+
+@app.post("/api/set-active-client")
+async def set_active_client(settings: ClientSettings):
+    conn = sqlite3.connect('pr_nexus.db')
+    c = conn.cursor()
+    c.execute("UPDATE settings SET active_url = ? WHERE id = 1", (settings.website_url,))
+    conn.commit()
+    conn.close()
+    return {"status": "success", "message": f"24/7 Bot is now permanently pitching for: {settings.website_url}"}
+
+@app.get("/api/get-active-client")
+async def get_active_client():
+    conn = sqlite3.connect('pr_nexus.db')
+    c = conn.cursor()
+    c.execute("SELECT active_url FROM settings WHERE id = 1")
+    row = c.fetchone()
+    conn.close()
+    return {"website_url": row[0] if row and row[0] else ""}
 
 @app.post("/api/run-imap-agent")
 async def run_imap_agent(req: VIPRequest):
