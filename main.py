@@ -298,10 +298,10 @@ async def run_vip_loop(req: VIPRequest):
         for idx, item in enumerate(live_feeds):
             queries_text += f"{idx}. {item['title'][:100]}\n"
             
-        batch_prompt = f"Client Niche: '{dynamic_niche}'. Here are {len(live_feeds)} HARO queries:\n{queries_text}\nReturn ONLY a comma-separated list of the numbers (e.g. 0, 5, 12) of the top 5 most relevant queries for this niche. If none, return empty."
+        batch_prompt = f"Client Niche: '{dynamic_niche}'. Here are {len(live_feeds)} HARO queries:\n{queries_text}\nFind ANY creative, out-of-the-box angle to match these queries to the client's niche. Be very lenient. Return ONLY a comma-separated list of the numbers (e.g. 0, 5, 12) of up to 8 matching queries. If absolutely none, return empty."
         
         try:
-            res = client.chat.completions.create(messages=[{"role": "user", "content": batch_prompt}], model="qwen/qwen3.8-27b", temperature=0.1, max_tokens=30)
+            res = client.chat.completions.create(messages=[{"role": "user", "content": batch_prompt}], model="qwen/qwen3.8-27b", temperature=0.3, max_tokens=30)
             result_str = res.choices[0].message.content
             # Extract numbers from the response
             selected_indices = [int(i.strip()) for i in re.findall(r'\d+', result_str)]
@@ -309,9 +309,9 @@ async def run_vip_loop(req: VIPRequest):
             logs.append(f"> [❌] Batch filter error: {e}")
             selected_indices = []
             
-        logs.append(f"> [✅] BATCH COMPLETE. AI selected {len(selected_indices)} matching queries!")
+        logs.append(f"> [✅] BATCH COMPLETE. AI selected {len(selected_indices)} creative matching queries!")
         
-        for idx in selected_indices[:5]:  # Safety limit 5 per click to guarantee speed
+        for idx in selected_indices[:8]:  # Increased to 8 per run to guarantee 10+ daily pitches across 3 runs
             if idx < len(live_feeds):
                 item = live_feeds[idx]
                 logs.append(f"\n> [+] CREATIVE MATCH: {item['title'][:50]}... Initiating Pitch Generation...")
