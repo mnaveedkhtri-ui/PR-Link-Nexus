@@ -263,5 +263,6 @@ async def run_imap_agent(req: VIPRequest):
     return {"status": "success", "logs": logs}
 
 if __name__ == "__main__":
-    print("[*] A-to-Z Database Engine Started... Open localhost:8000")
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    port = int(os.environ.get("PORT", 8000))
+    print(f"[*] A-to-Z Database Engine Started... Open 0.0.0.0:{port}")
+    uvicorn.run(app, host="0.0.0.0", port=port)
