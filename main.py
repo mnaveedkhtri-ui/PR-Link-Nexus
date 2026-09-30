@@ -16,9 +16,40 @@ from pydantic import BaseModel
 from groq import Groq
 import uvicorn
 import html
+import asyncio
 
 app = FastAPI(title="PR-Nexus A-Z VIP Backend")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "YOUR_GROQ_API_KEY")
+
+async def autonomous_24_7_loop():
+    while True:
+        email = os.getenv("SENDER_EMAIL")
+        app_pw = os.getenv("APP_PASSWORD")
+        name = os.getenv("FOUNDER_NAME")
+        url = os.getenv("WEBSITE_URL")
+        
+        if email and app_pw and name and url:
+            print("[*] 24/7 AUTO-PILOT WAKING UP...")
+            req = VIPRequest(
+                sender_email=email,
+                app_password=app_pw,
+                founder_name=name,
+                website_url=url
+            )
+            try:
+                await run_vip_loop(req)
+                print("[*] 24/7 AUTO-PILOT FINISHED PITCHING. GOING TO SLEEP.")
+            except Exception as e:
+                print(f"[!] 24/7 AUTO-PILOT ERROR: {e}")
+        else:
+            print("[!] 24/7 AUTO-PILOT: Missing environment variables. Skipping.")
+            
+        # Sleep for 4 hours (14400 seconds) - perfect for catching 3 daily HARO emails
+        await asyncio.sleep(14400)
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(autonomous_24_7_loop())
 
 # ==========================================
 # DATABASE SETUP (A to Z Requirement)
