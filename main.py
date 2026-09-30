@@ -62,25 +62,67 @@ def get_text_from_email(msg):
         return msg.get_payload(decode=True).decode()
     return ""
 
-def fetch_live_queries():
-    rss_url = "https://news.google.com/rss/search?q=intitle:%22looking+for+experts%22+OR+%22journorequest%22&hl=en-US&gl=US&ceid=US:en"
+def fetch_live_queries_from_haro(email_addr, app_password):
     queries = []
+    logs = [f"> [🌐] CONNECTING TO INBOX FOR HARO EMAILS..."]
     try:
-        req = urllib.request.Request(rss_url, headers={'User-Agent': 'Mozilla/5.0'})
-        xml_data = urllib.request.urlopen(req, timeout=10).read()
-        root = ET.fromstring(xml_data)
+        mail = imaplib.IMAP4_SSL("imap.gmail.com")
+        mail.login(email_addr, app_password)
+        mail.select("inbox")
         
-        for item in root.findall('.//item')[:3]:
-            clean_title = html.unescape(item.find('title').text)
-            queries.append({
-                "name": "Journalist", 
-                "outlet": "Live Feed",
-                "email": "test@example.com",
-                "query": clean_title
-            })
+        # Search for recent HARO emails
+        status, messages = mail.search(None, '(FROM "haro@helpareporter.com")')
+        email_ids = messages[0].split()
+        
+        if not email_ids:
+            logs.append("> [📭] No HARO emails found in inbox.")
+            return queries, logs
+            
+        # Get the most recent HARO email
+        latest_email_id = email_ids[-1]
+        status, msg_data = mail.fetch(latest_email_id, "(RFC822)")
+        
+        for response_part in msg_data:
+            if isinstance(response_part, tuple):
+                msg = email.message_from_bytes(response_part[1])
+                body = get_text_from_email(msg)
+                
+                # Simple parsing for HARO format
+                blocks = body.split("-----------------------------------")
+                for block in blocks:
+                    if "Summary:" in block and "Email: " in block and "Query:" in block:
+                        try:
+                            summary = block.split("Summary:")[1].split("\n")[0].strip()
+                            name = block.split("Name:")[1].split("\n")[0].strip()
+                            # Extract email string
+                            email_line = block.split("Email: ")[1].split("\n")[0].strip()
+                            q_email = re.search(r'[\w\.-]+@[\w\.-]+', email_line)
+                            if q_email:
+                                q_email = q_email.group(0)
+                            else:
+                                continue
+                            
+                            outlet = "HARO"
+                            if "Media Outlet:" in block:
+                                outlet = block.split("Media Outlet:")[1].split("\n")[0].strip()
+                                
+                            query_text = block.split("Query:")[1].split("[Back to Top]")[0].strip()
+                            
+                            queries.append({
+                                'title': summary,
+                                'query': query_text,
+                                'name': name,
+                                'email': q_email,
+                                'outlet': outlet
+                            })
+                        except Exception as e:
+                            pass
+        mail.logout()
+        logs.append(f"> [📥] Extracted {len(queries)} queries from the latest HARO email!")
     except Exception as e:
-        queries = [{"name": "Sarah", "outlet": "TechCrunch", "email": "", "query": "Does traditional Domain Authority matter in 2026?"}]
-    return queries
+        logs.append(f"> [❌] IMAP Error reading HARO: {e}")
+        
+    return queries, logs
 
 def scrape_website_text(url: str) -> str:
     try:
@@ -198,17 +240,31 @@ async def run_vip_loop(req: VIPRequest):
     dynamic_niche = extract_niche_with_ai(client, scraped_text)
     logs.append(f"> [🎯] AI defined your Core Expertise as:\n   '{dynamic_niche}'")
     
-    logs.append(f"\n> [🌐] CONNECTING TO LIVE INTERNET FEEDS (RSS)...")
-    live_feeds = fetch_live_queries()
+    # 2. FETCH FROM HARO (IMAP)
+    live_feeds, haro_logs = fetch_live_queries_from_haro(req.sender_email, req.app_password)
+    logs.extend(haro_logs)
     
+    pitch_count = 0
     for item in live_feeds:
-        logs.append(f"\n> [*] Live Query Found: {item['query'][:60]}...")
-        is_relevant = ai_semantic_filter(client, item['query'], dynamic_niche)
+        if pitch_count >= 10:
+            logs.append("\n> [⏸️] Daily limit of 10 pitches reached. Pausing until tomorrow.")
+            break
+            
+        logs.append(f"\n> [*] HARO Query Found: {item['query'][:60]}...")
+        
+        # 3. CREATIVE AI FILTER (Target: 10 per day)
+        filter_prompt = f"You are a smart PR Manager. Client's Niche: '{dynamic_niche}'. Journalist Query: '{item['query']}'. Can you find ANY creative angle to pitch this? Answer ONLY 'YES' or 'NO'."
+        try:
+            res = client.chat.completions.create(messages=[{"role": "user", "content": filter_prompt}], model="qwen/qwen3.8-27b", temperature=0.5, max_tokens=10)
+            is_relevant = "YES" in res.choices[0].message.content.strip().upper()
+        except:
+            is_relevant = False
+            
         if not is_relevant:
-            logs.append("> [-] Action: DISCARDED (No semantic match).")
+            logs.append("> [-] Action: DISCARDED (No creative match).")
             continue
             
-        logs.append("> [+] Action: MATCH FOUND! Initiating Pitch Generation...")
+        logs.append("> [+] Action: CREATIVE MATCH FOUND! Initiating Pitch Generation...")
         try:
             system_prompt = f"""
             You are {req.founder_name}, a busy founder at {req.website_url}.
@@ -216,13 +272,12 @@ async def run_vip_loop(req: VIPRequest):
             You are emailing a journalist to provide a quick quote for their story.
             
             CRITICAL RULES FOR 100% HUMAN STYLE:
-            1. DO NOT write long, robotic, run-on sentences. 
+            1. Find a creative, unique angle connecting your expertise to their query.
             2. Write like a real, busy person. Extremely conversational and casual.
             3. Maximum 3 sentences total. Keep it punchy.
             4. USE LINE BREAKS (paragraphs) between sentences so it's easy to read.
             5. Start with "Hi {item['name']},".
-            6. Provide ONE unique, contrarian thought or data point. No complex jargon.
-            7. Sign off simply with:
+            6. Sign off simply with:
             Best,
             {req.founder_name}
             {req.website_url}
@@ -238,22 +293,23 @@ async def run_vip_loop(req: VIPRequest):
             
             msg = MIMEMultipart()
             msg['From'] = req.sender_email
-            msg['To'] = item['email'] # ACTUAL PRODUCTION DELIVERY TO TARGET
+            msg['To'] = item['email'] # ACTUAL HARO TARGET
             msg['Subject'] = natural_subject
             msg.attach(MIMEText(pitch_text, 'plain'))
             
             server = smtplib.SMTP('smtp.gmail.com', 587)
             server.starttls()
             server.login(req.sender_email, req.app_password)
-            server.sendmail(req.sender_email, item['email'], msg.as_string()) # ACTUAL DELIVERY
+            server.sendmail(req.sender_email, item['email'], msg.as_string())
             server.quit()
             
             log_pitch_to_db(item['name'], item['outlet'], item['query'], pitch_text, "PITCH SENT")
-            logs.append(f"> [✅] SUCCESS! Live Pitch Delivered to Journalist & Logged to Database.")
+            logs.append(f"> [✅] SUCCESS! HARO Pitch Delivered to {item['email']} & Logged.")
+            pitch_count += 1
         except Exception as e:
-            logs.append(f"> [❌] SMTP ERROR.")
+            logs.append(f"> [❌] SMTP ERROR: {e}")
 
-    logs.append(f"\n> [🤖] Phase 1 (Pitching) complete.")
+    logs.append(f"\n> [🤖] Phase 1 (Pitching) complete. Total Pitches Sent: {pitch_count}")
     return {"status": "success", "logs": logs}
 
 @app.post("/api/run-imap-agent")
