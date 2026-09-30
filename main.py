@@ -92,10 +92,10 @@ def log_pitch_to_db(name, outlet, query, pitch_text, status):
 init_db()
 
 class VIPRequest(BaseModel):
-    sender_email: str
-    app_password: str
-    founder_name: str
-    website_url: str
+    sender_email: str = ""
+    app_password: str = ""
+    founder_name: str = ""
+    website_url: str = ""
 
 def get_text_from_email(msg):
     if msg.is_multipart():
@@ -278,14 +278,14 @@ async def run_vip_loop(req: VIPRequest):
     logs = []
     client = Groq(api_key=GROQ_API_KEY)
     
-    logs.append(f"> [🕸️] Requesting URL: {req.website_url}")
-    scraped_text = scrape_website_text(req.website_url)
+    logs.append(f"> [🕸️] Requesting URL: {req_url}")
+    scraped_text = scrape_website_text(req_url)
     logs.append(f"> [🧠] Analyzing website context via AI...")
     dynamic_niche = extract_niche_with_ai(client, scraped_text)
     logs.append(f"> [🎯] AI defined your Core Expertise as:\n   '{dynamic_niche}'")
     
     # 2. FETCH FROM HARO (IMAP)
-    live_feeds, haro_logs = fetch_live_queries_from_haro(req.sender_email, req.app_password)
+    live_feeds, haro_logs = fetch_live_queries_from_haro(req_email, req_pw)
     logs.extend(haro_logs)
     
     # 3. BATCH PROCESSING ENGINE (To prevent API Rate Limits & Timeouts)
@@ -318,7 +318,7 @@ async def run_vip_loop(req: VIPRequest):
                 
                 try:
                     system_prompt = f"""
-                    You are {req.founder_name}, a busy founder at {req.website_url}.
+                    You are {req_name}, a busy founder at {req_url}.
                     Your expertise: {dynamic_niche}.
                     You are emailing a journalist to provide a quick quote for their story.
                     
@@ -330,8 +330,8 @@ async def run_vip_loop(req: VIPRequest):
                     5. Start with "Hi {item['name']},".
                     6. Sign off simply with:
                     Best,
-                    {req.founder_name}
-                    {req.website_url}
+                    {req_name}
+                    {req_url}
                     """
                     pitch_text = client.chat.completions.create(
                         messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Journalist Query: \"{item['query']}\"\nWrite the email."}],
@@ -343,15 +343,15 @@ async def run_vip_loop(req: VIPRequest):
                     natural_subject = f"Quick thought on your query regarding {short_topic}..."
                     
                     msg = MIMEMultipart()
-                    msg['From'] = req.sender_email
+                    msg['From'] = req_email
                     msg['To'] = item['email'] # ACTUAL HARO TARGET
                     msg['Subject'] = natural_subject
                     msg.attach(MIMEText(pitch_text, 'plain'))
                     
                     server = smtplib.SMTP('smtp.gmail.com', 587)
                     server.starttls()
-                    server.login(req.sender_email, req.app_password)
-                    server.sendmail(req.sender_email, item['email'], msg.as_string())
+                    server.login(req_email, req_pw)
+                    server.sendmail(req_email, item['email'], msg.as_string())
                     server.quit()
                     
                     log_pitch_to_db(item['name'], item['outlet'], item['query'], pitch_text, "PITCH SENT")
