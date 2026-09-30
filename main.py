@@ -244,70 +244,77 @@ async def run_vip_loop(req: VIPRequest):
     live_feeds, haro_logs = fetch_live_queries_from_haro(req.sender_email, req.app_password)
     logs.extend(haro_logs)
     
+    # 3. BATCH PROCESSING ENGINE (To prevent API Rate Limits & Timeouts)
     pitch_count = 0
-    for item in live_feeds:
-        if pitch_count >= 10:
-            logs.append("\n> [⏸️] Daily limit of 10 pitches reached. Pausing until tomorrow.")
-            break
-            
-        logs.append(f"\n> [*] HARO Query Found: {item['query'][:60]}...")
+    if live_feeds:
+        logs.append(f"> [🧠] BATCH PROCESSING {len(live_feeds)} QUERIES IN ONE GO (Speed Optimization)...")
         
-        # 3. CREATIVE AI FILTER (Target: 10 per day)
-        filter_prompt = f"You are a smart PR Manager. Client's Niche: '{dynamic_niche}'. Journalist Query: '{item['query']}'. Can you find ANY creative angle to pitch this? Answer ONLY 'YES' or 'NO'."
+        # Prepare a numbered list of all queries
+        queries_text = ""
+        for idx, item in enumerate(live_feeds):
+            queries_text += f"{idx}. {item['title'][:100]}\n"
+            
+        batch_prompt = f"Client Niche: '{dynamic_niche}'. Here are {len(live_feeds)} HARO queries:\n{queries_text}\nReturn ONLY a comma-separated list of the numbers (e.g. 0, 5, 12) of the top 5 most relevant queries for this niche. If none, return empty."
+        
         try:
-            res = client.chat.completions.create(messages=[{"role": "user", "content": filter_prompt}], model="qwen/qwen3.8-27b", temperature=0.5, max_tokens=10)
-            is_relevant = "YES" in res.choices[0].message.content.strip().upper()
-        except:
-            is_relevant = False
-            
-        if not is_relevant:
-            logs.append("> [-] Action: DISCARDED (No creative match).")
-            continue
-            
-        logs.append("> [+] Action: CREATIVE MATCH FOUND! Initiating Pitch Generation...")
-        try:
-            system_prompt = f"""
-            You are {req.founder_name}, a busy founder at {req.website_url}.
-            Your expertise: {dynamic_niche}.
-            You are emailing a journalist to provide a quick quote for their story.
-            
-            CRITICAL RULES FOR 100% HUMAN STYLE:
-            1. Find a creative, unique angle connecting your expertise to their query.
-            2. Write like a real, busy person. Extremely conversational and casual.
-            3. Maximum 3 sentences total. Keep it punchy.
-            4. USE LINE BREAKS (paragraphs) between sentences so it's easy to read.
-            5. Start with "Hi {item['name']},".
-            6. Sign off simply with:
-            Best,
-            {req.founder_name}
-            {req.website_url}
-            """
-            pitch_text = client.chat.completions.create(
-                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Journalist Query: \"{item['query']}\"\nWrite the email."}],
-                model="qwen/qwen3.8-27b", temperature=0.7, max_tokens=250
-            ).choices[0].message.content
-            
-            words = item['query'].split()
-            short_topic = " ".join(words[:4]).replace("?", "").replace('"', '')
-            natural_subject = f"Quick thought on your query regarding {short_topic}..."
-            
-            msg = MIMEMultipart()
-            msg['From'] = req.sender_email
-            msg['To'] = item['email'] # ACTUAL HARO TARGET
-            msg['Subject'] = natural_subject
-            msg.attach(MIMEText(pitch_text, 'plain'))
-            
-            server = smtplib.SMTP('smtp.gmail.com', 587)
-            server.starttls()
-            server.login(req.sender_email, req.app_password)
-            server.sendmail(req.sender_email, item['email'], msg.as_string())
-            server.quit()
-            
-            log_pitch_to_db(item['name'], item['outlet'], item['query'], pitch_text, "PITCH SENT")
-            logs.append(f"> [✅] SUCCESS! HARO Pitch Delivered to {item['email']} & Logged.")
-            pitch_count += 1
+            res = client.chat.completions.create(messages=[{"role": "user", "content": batch_prompt}], model="qwen/qwen3.8-27b", temperature=0.1, max_tokens=30)
+            result_str = res.choices[0].message.content
+            # Extract numbers from the response
+            selected_indices = [int(i.strip()) for i in re.findall(r'\d+', result_str)]
         except Exception as e:
-            logs.append(f"> [❌] SMTP ERROR: {e}")
+            logs.append(f"> [❌] Batch filter error: {e}")
+            selected_indices = []
+            
+        logs.append(f"> [✅] BATCH COMPLETE. AI selected {len(selected_indices)} matching queries!")
+        
+        for idx in selected_indices[:5]:  # Safety limit 5 per click to guarantee speed
+            if idx < len(live_feeds):
+                item = live_feeds[idx]
+                logs.append(f"\n> [+] CREATIVE MATCH: {item['title'][:50]}... Initiating Pitch Generation...")
+                
+                try:
+                    system_prompt = f"""
+                    You are {req.founder_name}, a busy founder at {req.website_url}.
+                    Your expertise: {dynamic_niche}.
+                    You are emailing a journalist to provide a quick quote for their story.
+                    
+                    CRITICAL RULES FOR 100% HUMAN STYLE:
+                    1. Find a creative, unique angle connecting your expertise to their query.
+                    2. Write like a real, busy person. Extremely conversational and casual.
+                    3. Maximum 3 sentences total. Keep it punchy.
+                    4. USE LINE BREAKS (paragraphs) between sentences so it's easy to read.
+                    5. Start with "Hi {item['name']},".
+                    6. Sign off simply with:
+                    Best,
+                    {req.founder_name}
+                    {req.website_url}
+                    """
+                    pitch_text = client.chat.completions.create(
+                        messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Journalist Query: \"{item['query']}\"\nWrite the email."}],
+                        model="qwen/qwen3.8-27b", temperature=0.7, max_tokens=250
+                    ).choices[0].message.content
+                    
+                    words = item['query'].split()
+                    short_topic = " ".join(words[:4]).replace("?", "").replace('"', '')
+                    natural_subject = f"Quick thought on your query regarding {short_topic}..."
+                    
+                    msg = MIMEMultipart()
+                    msg['From'] = req.sender_email
+                    msg['To'] = item['email'] # ACTUAL HARO TARGET
+                    msg['Subject'] = natural_subject
+                    msg.attach(MIMEText(pitch_text, 'plain'))
+                    
+                    server = smtplib.SMTP('smtp.gmail.com', 587)
+                    server.starttls()
+                    server.login(req.sender_email, req.app_password)
+                    server.sendmail(req.sender_email, item['email'], msg.as_string())
+                    server.quit()
+                    
+                    log_pitch_to_db(item['name'], item['outlet'], item['query'], pitch_text, "PITCH SENT")
+                    logs.append(f"> [✅] SUCCESS! HARO Pitch Delivered to {item['email']} & Logged.")
+                    pitch_count += 1
+                except Exception as e:
+                    logs.append(f"> [❌] SMTP ERROR: {e}")
 
     logs.append(f"\n> [🤖] Phase 1 (Pitching) complete. Total Pitches Sent: {pitch_count}")
     return {"status": "success", "logs": logs}
