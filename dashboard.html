@@ -193,12 +193,10 @@
         }
 
         function getPayload() {
-            const s = document.getElementById('senderEmail').value;
-            const a = document.getElementById('appPassword').value;
-            const f = document.getElementById('founderName').value;
-            const w = document.getElementById('websiteUrl').value;
-            if(!s || !a || !f || !w) return null;
-            return { sender_email: s, app_password: a, founder_name: f, website_url: w };
+            const urlElement = document.getElementById('website_url');
+            const w = urlElement ? urlElement.value : "";
+            return { sender_email: "", app_password: "", founder_name: "", website_url: w };
+        };
         }
 
         async function startVIPAgent() {
