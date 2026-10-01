@@ -10,7 +10,7 @@ import re
 import sqlite3
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from fastapi import FastAPI
+from fastapi import FastAPI, BackgroundTasks
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from groq import Groq
@@ -45,7 +45,7 @@ async def autonomous_24_7_loop():
                 website_url=url
             )
             try:
-                run_vip_loop(req)
+                process_vip_loop(req)
                 print("[*] 24/7 AUTO-PILOT FINISHED PITCHING. GOING TO SLEEP.")
             except Exception as e:
                 print(f"[!] 24/7 AUTO-PILOT ERROR: {e}")
@@ -282,7 +282,11 @@ async def get_history():
     return {"status": "success", "data": rows}
 
 @app.post("/api/run-vip-autonomous")
-def run_vip_loop(req: VIPRequest):
+def run_vip_loop(req: VIPRequest, bg_tasks: BackgroundTasks):
+    bg_tasks.add_task(process_vip_loop, req)
+    return {"status": "success", "logs": ["> [*] Manual Request Accepted!", "> [*] Pitching engine has started in the background.", "> [*] Please wait 2-3 minutes, then check the 'Database & Reports' tab to see the live results!"]}
+
+def process_vip_loop(req: VIPRequest):
     logs = []
     client = Groq(api_key=GROQ_API_KEY)
     
