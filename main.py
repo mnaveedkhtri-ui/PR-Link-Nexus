@@ -253,8 +253,7 @@ def scan_inbox_and_reply(email_addr, app_password, founder_name, website_url, cl
                 
                 logs.append(f"> [*] Sending AI Auto-Reply to {sender}...")
                 
-                smtp = smtplib.SMTP('smtp.gmail.com', 587)
-                smtp.starttls()
+                smtp = smtplib.SMTP_SSL('smtp.gmail.com', 465)
                 smtp.login(email_addr, app_password)
                 reply_msg = MIMEMultipart()
                 reply_msg['From'] = email_addr
@@ -358,6 +357,8 @@ def process_vip_loop(req: VIPRequest):
             if idx < len(live_feeds):
                 item = live_feeds[idx]
                 logs.append(f"\n> [*] CREATIVE MATCH: {item['title'][:50]}... Initiating Pitch Generation...")
+                log_pitch_to_db("SYSTEM LOG", "Pitch Gen", f"Starting AI generation for index {idx}", "LOG", "LOG")
+
                 
                 try:
                     system_prompt = f"""
@@ -391,8 +392,7 @@ def process_vip_loop(req: VIPRequest):
                     msg['Subject'] = natural_subject
                     msg.attach(MIMEText(pitch_text, 'plain'))
                     
-                    server = smtplib.SMTP('smtp.gmail.com', 587)
-                    server.starttls()
+                    server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
                     server.login(req_email, req_pw)
                     server.sendmail(req_email, item['email'], msg.as_string())
                     server.quit()
@@ -402,6 +402,8 @@ def process_vip_loop(req: VIPRequest):
                     pitch_count += 1
                 except Exception as e:
                     logs.append(f"> [*] SMTP ERROR: {e}")
+                    log_pitch_to_db("SYSTEM LOG", "Error in Pitch", str(e), "ERROR", "ERROR")
+
 
     logs.append(f"\n> [*] Phase 1 (Pitching) complete. Total Pitches Sent: {pitch_count}")
     return {"status": "success", "logs": logs}
