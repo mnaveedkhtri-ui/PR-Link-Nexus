@@ -190,7 +190,7 @@ def scrape_website_text(url: str) -> str:
 
 def extract_niche_with_ai(client, text: str) -> str:
     if "Error scraping" in text: return "Digital Agency & SEO services."
-    prompt = f"Analyze website text and define its specific business niche in a concise 15-word summary. \nText: {text}"
+    prompt = f"Analyze website text and define ALL the broad categories it covers (e.g., Tech, Lifestyle, Business, Health, Finance, General) in a concise 20-word summary, treating it as a multi-category site if applicable. \nText: {text}"
     try:
         res = client.chat.completions.create(messages=[{"role": "user", "content": prompt}], model="qwen/qwen3.8-27b", temperature=0.2, max_tokens=40)
         return res.choices[0].message.content.strip()
@@ -320,7 +320,7 @@ async def run_vip_loop(req: VIPRequest):
         for idx, item in enumerate(live_feeds):
             queries_text += f"{idx}. {item['title'][:100]}\n"
             
-        batch_prompt = f"Client Niche: '{dynamic_niche}'. Here are {len(live_feeds)} HARO queries:\n{queries_text}\nFind ANY creative, out-of-the-box angle to match these queries to the client's niche. Be very lenient. Return ONLY a comma-separated list of the numbers (e.g. 0, 5, 12) of up to 8 matching queries. If absolutely none, return empty."
+        batch_prompt = f"Client Niche: '{dynamic_niche}'. Here are {len(live_feeds)} HARO queries:\n{queries_text}\nThe client runs a broad, multi-category site. Find ANY creative angle to match these queries to ANY of the client's topics. Be EXTREMELY lenient and try to find matches even if loosely related. Return ONLY a comma-separated list of the numbers (e.g. 0, 5, 12) of up to 8 matching queries. If absolutely none, return empty."
         
         try:
             res = client.chat.completions.create(messages=[{"role": "user", "content": batch_prompt}], model="qwen/qwen3.8-27b", temperature=0.3, max_tokens=30)
