@@ -57,7 +57,7 @@ async def autonomous_24_7_loop():
             print("[!] 24/7 AUTO-PILOT: Missing environment variables. Skipping.")
             
         # Sleep for 4 hours (14400 seconds) - perfect for catching 3 daily HARO emails
-        await asyncio.sleep(14400)
+        await asyncio.sleep(600)
 
 import threading
 
