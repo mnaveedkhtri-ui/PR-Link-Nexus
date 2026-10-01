@@ -45,7 +45,7 @@ async def autonomous_24_7_loop():
                 website_url=url
             )
             try:
-                await run_vip_loop(req)
+                run_vip_loop(req)
                 print("[*] 24/7 AUTO-PILOT FINISHED PITCHING. GOING TO SLEEP.")
             except Exception as e:
                 print(f"[!] 24/7 AUTO-PILOT ERROR: {e}")
@@ -282,7 +282,7 @@ async def get_history():
     return {"status": "success", "data": rows}
 
 @app.post("/api/run-vip-autonomous")
-async def run_vip_loop(req: VIPRequest):
+def run_vip_loop(req: VIPRequest):
     logs = []
     client = Groq(api_key=GROQ_API_KEY)
     
@@ -407,7 +407,7 @@ async def get_active_client():
     return {"website_url": row[0] if row and row[0] else ""}
 
 @app.post("/api/run-imap-agent")
-async def run_imap_agent(req: VIPRequest):
+def run_imap_agent(req: VIPRequest):
     client = Groq(api_key=GROQ_API_KEY)
     logs = scan_inbox_and_reply(req.sender_email, req.app_password, req.founder_name, req.website_url, client)
     return {"status": "success", "logs": logs}
