@@ -315,11 +315,17 @@ def process_vip_loop(req: VIPRequest):
     logs.append(f"> [*] Requesting URL: {req_url}")
     scraped_text = scrape_website_text(req_url)
     logs.append(f"> [*] Analyzing website context via AI...")
+    
     dynamic_niche = extract_niche_with_ai(client, scraped_text)
+    log_pitch_to_db("SYSTEM LOG", "AI Niche", f"Extracted Niche: {dynamic_niche}", "LOG", "LOG")
+
     logs.append(f"> [*] AI defined your Core Expertise as:\n   '{dynamic_niche}'")
     
     # 2. FETCH FROM HARO (IMAP)
+    
     live_feeds, haro_logs = fetch_live_queries_from_haro(req_email, req_pw)
+    log_pitch_to_db("SYSTEM LOG", "IMAP Scanner", f"Found {len(live_feeds)} PR queries in inbox", "LOG", "LOG")
+
     logs.extend(haro_logs)
     
     # 3. BATCH PROCESSING ENGINE (To prevent API Rate Limits & Timeouts)
@@ -332,7 +338,7 @@ def process_vip_loop(req: VIPRequest):
         for idx, item in enumerate(live_feeds):
             queries_text += f"{idx}. {item['title'][:100]}\n"
             
-        batch_prompt = f"Client Niche: '{dynamic_niche}'. Here are {len(live_feeds)} HARO queries:\n{queries_text}\nThe client runs a broad, multi-category site. Find ANY creative angle to match these queries to ANY of the client's topics. Be EXTREMELY lenient and try to find matches even if loosely related. Return ONLY a comma-separated list of the numbers (e.g. 0, 5, 12) of up to 8 matching queries. If absolutely none, return empty."
+        batch_prompt = f"Client Niche: '{dynamic_niche}'. Here are {len(live_feeds)} HARO queries:\n{queries_text}\nThe client runs a broad, multi-category site. Find ANY creative angle to match these queries to ANY of the client's topics. Be EXTREMELY lenient and try to find matches even if loosely related. Return ONLY a comma-separated list of the numbers (e.g. 0, 5, 12) of up to 8 matching queries. You MUST select at least 1 query no matter what, even if it is a huge stretch. Do NOT return empty. Return at least one index."
         
         try:
             res = client.chat.completions.create(messages=[{"role": "user", "content": batch_prompt}], model="qwen/qwen3.8-27b", temperature=0.3, max_tokens=30)
@@ -344,6 +350,9 @@ def process_vip_loop(req: VIPRequest):
             selected_indices = []
             
         logs.append(f"> [*] BATCH COMPLETE. AI selected {len(selected_indices)} creative matching queries!")
+
+        log_pitch_to_db("SYSTEM LOG", "AI Filter", f"AI selected {len(selected_indices)} matching queries to pitch", "LOG", "LOG")
+
         
         for idx in selected_indices[:8]:  # Increased to 8 per run to guarantee 10+ daily pitches across 3 runs
             if idx < len(live_feeds):
