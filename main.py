@@ -127,7 +127,7 @@ def fetch_live_queries_from_haro(email_addr, app_password):
         mail.select("inbox")
         
         # Search all emails, we will check the last 15
-        status, messages = mail.search(None, 'ALL')
+        status, messages = mail.search(None, '(OR (SUBJECT "HARO") (SUBJECT "Connectively"))')
         email_ids = messages[0].split()
         
         if not email_ids:
@@ -136,7 +136,7 @@ def fetch_live_queries_from_haro(email_addr, app_password):
             
         found_haro = False
         import re
-        for i in range(1, min(16, len(email_ids) + 1)):
+        for i in range(1, min(4, len(email_ids) + 1)):
             latest_email_id = email_ids[-i]
             status, msg_data = mail.fetch(latest_email_id, "(RFC822)")
             
@@ -176,7 +176,7 @@ def fetch_live_queries_from_haro(email_addr, app_password):
                 break
                 
         if not found_haro:
-            logs.append("> [*] Checked last 15 emails. No HARO/Connectively queries found.")
+            logs.append("> [*] Checked recent PR emails. No HARO/Connectively queries found.")
         else:
             logs.append(f"> [*] Extracted {len(queries)} queries from the latest PR email!")
     except Exception as e:
@@ -478,6 +478,13 @@ def debug_vip(req: VIPRequest):
         logs.append(f"> [*] DEBUG ERROR: {e}")
         
     return {"logs": logs}
+
+@app.post("/api/debug-robust")
+def debug_robust(req: VIPRequest):
+    req_email = req.sender_email or os.getenv("SENDER_EMAIL")
+    req_pw = req.app_password or os.getenv("APP_PASSWORD")
+    queries, logs = fetch_live_queries_from_haro(req_email, req_pw)
+    return {"logs": logs, "query_count": len(queries)}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
