@@ -116,63 +116,71 @@ def get_text_from_email(msg):
 
 def fetch_live_queries_from_haro(email_addr, app_password):
     queries = []
-    logs = [f"> [*] CONNECTING TO INBOX FOR HARO EMAILS..."]
+    logs = ["> [*] CONNECTING TO INBOX FOR HARO/CONNECTIVELY EMAILS..."]
     try:
+        import imaplib
+        import email
+        from email.header import decode_header
+        
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
         mail.login(email_addr, app_password)
         mail.select("inbox")
         
-        # Search for recent HARO emails
-        status, messages = mail.search(None, '(SUBJECT "HARO")')
+        # Search all emails, we will check the last 15
+        status, messages = mail.search(None, 'ALL')
         email_ids = messages[0].split()
         
         if not email_ids:
-            logs.append("> [*] No HARO emails found in inbox.")
+            logs.append("> [*] No emails found in inbox.")
             return queries, logs
             
-        # Get the most recent HARO email
-        latest_email_id = email_ids[-1]
-        status, msg_data = mail.fetch(latest_email_id, "(RFC822)")
-        
-        for response_part in msg_data:
-            if isinstance(response_part, tuple):
-                msg = email.message_from_bytes(response_part[1])
-                body = get_text_from_email(msg)
-                
-                # Simple parsing for HARO format
-                blocks = body.split("-----------------------------------")
-                for block in blocks:
-                    if "Summary:" in block and "Email: " in block and "Query:" in block:
-                        try:
-                            summary = block.split("Summary:")[1].split("\n")[0].strip()
-                            name = block.split("Name:")[1].split("\n")[0].strip()
-                            # Extract email string
-                            email_line = block.split("Email: ")[1].split("\n")[0].strip()
-                            q_email = re.search(r'[\w\.-]+@[\w\.-]+', email_line)
-                            if q_email:
-                                q_email = q_email.group(0)
-                            else:
-                                continue
+        found_haro = False
+        import re
+        for i in range(1, min(16, len(email_ids) + 1)):
+            latest_email_id = email_ids[-i]
+            status, msg_data = mail.fetch(latest_email_id, "(RFC822)")
+            
+            for response_part in msg_data:
+                if isinstance(response_part, tuple):
+                    msg = email.message_from_bytes(response_part[1])
+                    body = get_text_from_email(msg)
+                    
+                    if "Media Outlet:" in body or "Summary:" in body or "Connectively" in body or "HARO" in body:
+                        found_haro = True
+                        blocks = body.split("-----------------------------------")
+                        if len(blocks) < 3:
+                            blocks = body.split("Summary:")
                             
-                            outlet = "HARO"
+                        for block in blocks:
+                            outlet = "HARO/Connectively"
                             if "Media Outlet:" in block:
-                                outlet = block.split("Media Outlet:")[1].split("\n")[0].strip()
-                                
-                            query_text = block.split("Query:")[1].split("[Back to Top]")[0].strip()
+                                try:
+                                    outlet = block.split("Media Outlet:")[1].split("\n")[0].strip()
+                                except: pass
                             
-                            queries.append({
-                                'title': summary,
-                                'query': query_text,
-                                'name': name,
-                                'email': q_email,
-                                'outlet': outlet
-                            })
-                        except Exception as e:
-                            pass
-        mail.logout()
-        logs.append(f"> [*] Extracted {len(queries)} queries from the latest HARO email!")
+                            if "Email:" in block or "@" in block or "Query:" in block or len(block) > 100:
+                                q_text = block[:1000].strip()
+                                emails_in_block = re.findall(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', block)
+                                target_email = emails_in_block[0] if emails_in_block else None
+                                
+                                if target_email and len(q_text) > 50:
+                                    queries.append({
+                                        "title": q_text[:100].replace("\n", " "),
+                                        "outlet": outlet,
+                                        "query": q_text,
+                                        "name": "Journalist",
+                                        "email": target_email
+                                    })
+                        break
+            if found_haro:
+                break
+                
+        if not found_haro:
+            logs.append("> [*] Checked last 15 emails. No HARO/Connectively queries found.")
+        else:
+            logs.append(f"> [*] Extracted {len(queries)} queries from the latest PR email!")
     except Exception as e:
-        logs.append(f"> [*] IMAP Error reading HARO: {e}")
+        logs.append(f"> [*] IMAP Error reading emails: {e}")
         
     return queries, logs
 
