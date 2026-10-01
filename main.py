@@ -55,9 +55,17 @@ async def autonomous_24_7_loop():
         # Sleep for 4 hours (14400 seconds) - perfect for catching 3 daily HARO emails
         await asyncio.sleep(14400)
 
+import threading
+
+def background_worker():
+    import asyncio
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(autonomous_24_7_loop())
+
 @app.on_event("startup")
 async def startup_event():
-    asyncio.create_task(autonomous_24_7_loop())
+    threading.Thread(target=background_worker, daemon=True).start()
 
 # ==========================================
 # DATABASE SETUP (A to Z Requirement)
