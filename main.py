@@ -1,4 +1,6 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()
 import smtplib
 import imaplib
 import email
@@ -337,7 +339,7 @@ def process_vip_loop(req: VIPRequest):
         for idx, item in enumerate(live_feeds):
             queries_text += f"{idx}. {item['title'][:100]}\n"
             
-        batch_prompt = f"Client Niche: '{dynamic_niche}'. Here are {len(live_feeds)} HARO queries:\n{queries_text}\nThe client runs a broad, multi-category site. Find ANY creative angle to match these queries to ANY of the client's topics. Be EXTREMELY lenient and try to find matches even if loosely related. Return ONLY a comma-separated list of the numbers (e.g. 0, 5, 12) of up to 8 matching queries. You MUST select at least 1 query no matter what, even if it is a huge stretch. Do NOT return empty. Return at least one index."
+        batch_prompt = f"Client Niche: '{dynamic_niche}'. Here are {len(live_feeds)} HARO queries:\n{queries_text}\nCarefully review these queries. Only select a query if the client's niche is a GENUINE and VALUABLE fit. Do not force a connection if it doesn't make sense. Return ONLY a comma-separated list of the numbers (e.g. 0, 5, 12) of up to 8 matching queries. If none are a good fit, return an empty string."
         
         try:
             res = client.chat.completions.create(messages=[{"role": "user", "content": batch_prompt}], model="qwen/qwen3.8-27b", temperature=0.3, max_tokens=30)
@@ -382,9 +384,13 @@ def process_vip_loop(req: VIPRequest):
                         model="qwen/qwen3.8-27b", temperature=0.7, max_tokens=250
                     ).choices[0].message.content
                     
-                    words = item['query'].split()
-                    short_topic = " ".join(words[:4]).replace("?", "").replace('"', '')
-                    natural_subject = f"Quick thought on your query regarding {short_topic}..."
+                    import re
+                    match = re.search(r'Summary:\s*(.+?)(?:\r|\n|$)', item['query'])
+                    if match:
+                        clean_summary = match.group(1).strip()[:60]
+                        natural_subject = f"Re: Your query on {clean_summary}"
+                    else:
+                        natural_subject = "Quick thought on your recent media query"
                     
                     msg = MIMEMultipart()
                     msg['From'] = req_email
