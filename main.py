@@ -48,7 +48,9 @@ async def autonomous_24_7_loop():
             )
             try:
                 process_vip_loop(req)
-                print("[*] 24/7 AUTO-PILOT FINISHED PITCHING. GOING TO SLEEP.")
+                print("[*] 24/7 AUTO-PILOT PITCHING COMPLETE. NOW CHECKING INBOX FOR REPLIES...")
+                process_imap_agent(req)
+                print("[*] 24/7 AUTO-PILOT FINISHED ALL TASKS. GOING TO SLEEP.")
             except Exception as e:
                 print(f"[!] 24/7 AUTO-PILOT ERROR: {e}")
         else:
