@@ -116,201 +116,80 @@ def get_text_from_email(msg):
 
 def fetch_live_queries_from_haro(email_addr, app_password):
     queries = []
-    logs = [f"> [*] CONNECTING TO INBOX FOR HARO EMAILS..."]
+    logs = ["> [*] CONNECTING TO INBOX FOR HARO/CONNECTIVELY EMAILS..."]
     try:
+        import imaplib
+        import email
+        from email.header import decode_header
+        
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
         mail.login(email_addr, app_password)
         mail.select("inbox")
         
-        # Search for recent HARO emails
-        status, messages = mail.search(None, '(SUBJECT "HARO")')
+        # Search all emails, we will check the last 10
+        status, messages = mail.search(None, 'ALL')
         email_ids = messages[0].split()
         
         if not email_ids:
-            logs.append("> [*] No HARO emails found in inbox.")
+            logs.append("> [*] No emails found in inbox.")
             return queries, logs
             
-        # Get the most recent HARO email
-        latest_email_id = email_ids[-1]
-        status, msg_data = mail.fetch(latest_email_id, "(RFC822)")
-        
-        for response_part in msg_data:
-            if isinstance(response_part, tuple):
-                msg = email.message_from_bytes(response_part[1])
-                body = get_text_from_email(msg)
-                
-                # Simple parsing for HARO format
-                blocks = body.split("-----------------------------------")
-                for block in blocks:
-                    if "Summary:" in block and "Email: " in block and "Query:" in block:
-                        try:
-                            summary = block.split("Summary:")[1].split("\n")[0].strip()
-                            name = block.split("Name:")[1].split("\n")[0].strip()
-                            # Extract email string
-                            email_line = block.split("Email: ")[1].split("\n")[0].strip()
-                            q_email = re.search(r'[\w\.-]+@[\w\.-]+', email_line)
-                            if q_email:
-                                q_email = q_email.group(0)
-                            else:
-                                continue
+        # Look at the last 15 emails to find the latest HARO/Connectively newsletter
+        found_haro = False
+        for i in range(1, min(16, len(email_ids) + 1)):
+            latest_email_id = email_ids[-i]
+            status, msg_data = mail.fetch(latest_email_id, "(RFC822)")
+            
+            for response_part in msg_data:
+                if isinstance(response_part, tuple):
+                    msg = email.message_from_bytes(response_part[1])
+                    body = get_text_from_email(msg)
+                    
+                    # Simple check: Does it look like a PR query email?
+                    if "Media Outlet:" in body or "Summary:" in body or "Connectively" in body or "HARO" in body:
+                        found_haro = True
+                        blocks = body.split("-----------------------------------")
+                        # Some new formats use different dividers, fallback to regex if blocks are 1
+                        if len(blocks) < 3:
+                            # Try splitting by double newlines or Summary:
+                            blocks = body.split("Summary:")
                             
-                            outlet = "HARO"
+                        for block in blocks:
+                            outlet = "HARO/Connectively"
                             if "Media Outlet:" in block:
-                                outlet = block.split("Media Outlet:")[1].split("\n")[0].strip()
-                                
-                            query_text = block.split("Query:")[1].split("[Back to Top]")[0].strip()
+                                try:
+                                    outlet = block.split("Media Outlet:")[1].split("\n")[0].strip()
+                                except: pass
                             
-                            queries.append({
-                                'title': summary,
-                                'query': query_text,
-                                'name': name,
-                                'email': q_email,
-                                'outlet': outlet
-                            })
-                        except Exception as e:
-                            pass
-        mail.logout()
-        logs.append(f"> [*] Extracted {len(queries)} queries from the latest HARO email!")
+                            # Add block to queries if it contains a query or if we split by Summary:
+                            if "Email:" in block or "@" in block or "Query:" in block or len(block) > 100:
+                                # Clean up block
+                                q_text = block[:1000].strip()
+                                # We need an email to send to
+                                emails_in_block = re.findall(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', block)
+                                target_email = emails_in_block[0] if emails_in_block else None
+                                
+                                if target_email and len(q_text) > 50:
+                                    queries.append({
+                                        "title": q_text[:100].replace("\n", " "),
+                                        "outlet": outlet,
+                                        "query": q_text,
+                                        "name": "Journalist",
+                                        "email": target_email
+                                    })
+                        break # Stop checking older emails since we found the latest one
+            if found_haro:
+                break
+                
+        if not found_haro:
+            logs.append("> [*] Checked last 15 emails. No HARO/Connectively queries found.")
+        else:
+            logs.append(f"> [*] Extracted {len(queries)} queries from the latest PR email!")
     except Exception as e:
-        logs.append(f"> [*] IMAP Error reading HARO: {e}")
+        logs.append(f"> [*] IMAP Error reading emails: {e}")
         
     return queries, logs
-
-def scrape_website_text(url: str) -> str:
-    try:
-        if not url.startswith('http'): url = 'https://' + url
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        html_content = urllib.request.urlopen(req, timeout=10).read().decode('utf-8')
-        text = re.sub(r'<script.*?</script>', '', html_content, flags=re.DOTALL)
-        text = re.sub(r'<style.*?</style>', '', text, flags=re.DOTALL)
-        text = re.sub(r'<[^<]+>', ' ', text)
-        return re.sub(r'\s+', ' ', text).strip()[:3000]
-    except Exception as e:
-        return f"Error scraping: {e}"
-
-def extract_niche_with_ai(client, text: str) -> str:
-    if "Error scraping" in text: return "Digital Agency & SEO services."
-    prompt = f"Analyze website text and define ALL the broad categories it covers (e.g., Tech, Lifestyle, Business, Health, Finance, General) in a concise 20-word summary, treating it as a multi-category site if applicable. \nText: {text}"
-    try:
-        res = client.chat.completions.create(messages=[{"role": "user", "content": prompt}], model="qwen/qwen3.8-27b", temperature=0.2, max_tokens=40)
-        return res.choices[0].message.content.strip()
-    except:
-        return "Technology & SEO Services"
-
-def ai_semantic_filter(client, query: str, client_niche: str) -> bool:
-    prompt = f"You are a smart PR Manager. Your client's expertise: '{client_niche}'. Journalist asks: '{query}'. Could your client answer this? Answer ONLY 'YES' or 'NO'."
-    try:
-        res = client.chat.completions.create(messages=[{"role": "user", "content": prompt}], model="qwen/qwen3.8-27b", temperature=0.1, max_tokens=10)
-        return "YES" in res.choices[0].message.content.strip().upper()
-    except:
-        return False
-
-def scan_inbox_and_reply(email_addr, app_password, founder_name, website_url, client):
-    logs = []
-    logs.append(f"> [*] Connecting to Gmail IMAP Server...")
-    try:
-        mail = imaplib.IMAP4_SSL("imap.gmail.com")
-        mail.login(email_addr, app_password)
-        mail.select("inbox")
-        status, messages = mail.search(None, "UNSEEN") # Changed back to UNSEEN for production
-        email_ids = messages[0].split()
-        
-        if not email_ids:
-            logs.append("> [*] Inbox is empty. No new unread replies found.")
-            return logs
-            
-        latest_email_id = email_ids[-1]
-        status, msg_data = mail.fetch(latest_email_id, "(RFC822)")
-        
-        for response_part in msg_data:
-            if isinstance(response_part, tuple):
-                msg = email.message_from_bytes(response_part[1])
-                subject, encoding = decode_header(msg["Subject"])[0]
-                if isinstance(subject, bytes): subject = subject.decode(encoding if encoding else "utf-8")
-                sender = msg.get("From")
-                body = get_text_from_email(msg)
-                
-                logs.append(f"> [*] New Email Found: {subject}")
-                
-                check_prompt = f"Is the following email a newsletter/spam, or a real human message? Answer ONLY 'SPAM' or 'REAL'.\nSubject: {subject}\nBody: {body[:500]}"
-                is_real = client.chat.completions.create(messages=[{"role": "user", "content": check_prompt}], model="qwen/qwen3.8-27b", temperature=0.1, max_tokens=10).choices[0].message.content.strip().upper()
-                
-                if "SPAM" in is_real:
-                    logs.append("> [*] AI Filter: Discarded as Spam.")
-                    continue
-                
-                logs.append("> [*] AI analyzing context and writing reply...")
-                reply_prompt = f"You are {founder_name}, founder of {website_url}. Reply politely to this email from {sender}: '{body[:1000]}'. Sign off as {founder_name}."
-                reply_text = client.chat.completions.create(messages=[{"role": "user", "content": reply_prompt}], model="qwen/qwen3.8-27b", temperature=0.7, max_tokens=250).choices[0].message.content
-                
-                logs.append(f"> [*] Sending AI Auto-Reply to {sender}...")
-                
-                smtp = smtplib.SMTP('smtp.gmail.com', 587)
-                smtp.starttls()
-                smtp.login(email_addr, app_password)
-                reply_msg = MIMEMultipart()
-                reply_msg['From'] = email_addr
-                reply_msg['To'] = sender # Real Reply to actual Sender
-                reply_msg['Subject'] = f"Re: {subject}"
-                reply_msg.attach(MIMEText(reply_text, 'plain'))
-                smtp.sendmail(email_addr, sender, reply_msg.as_string())
-                smtp.quit()
-                
-                log_pitch_to_db(sender, "Reply", subject, reply_text, "REPLIED")
-                logs.append("> [*] SUCCESS! Reply sent & logged to Database.")
-                
-        mail.logout()
-    except Exception as e:
-        logs.append(f"> [*] IMAP ERROR: Could not read inbox. {e}")
-    return logs
-
-# ==========================================
-# API ENDPOINTS
-# ==========================================
-@app.get("/", response_class=HTMLResponse)
-async def serve_dashboard():
-    with open("dashboard.html", "r", encoding="utf-8") as f:
-        return f.read()
-
-@app.get("/api/history")
-async def get_history():
-    conn = sqlite3.connect('pr_nexus.db')
-    c = conn.cursor()
-    c.execute("SELECT id, journalist_name, query, status, timestamp FROM pitches ORDER BY id DESC LIMIT 10")
-    rows = c.fetchall()
-    conn.close()
-    return {"status": "success", "data": rows}
-
-@app.post("/api/run-vip-autonomous")
-def run_vip_loop(req: VIPRequest, bg_tasks: BackgroundTasks):
-    bg_tasks.add_task(process_vip_loop, req)
-    return {"status": "success", "logs": ["> [*] Manual Request Accepted!", "> [*] Pitching engine has started in the background.", "> [*] Please wait 2-3 minutes, then check the 'Database & Reports' tab to see the live results!"]}
-
-def process_vip_loop(req: VIPRequest):
-    logs = []
-    client = Groq(api_key=GROQ_API_KEY)
-    
-    req_email = req.sender_email or os.getenv("SENDER_EMAIL")
-    req_pw = req.app_password or os.getenv("APP_PASSWORD")
-    req_name = req.founder_name or os.getenv("FOUNDER_NAME")
-    import sqlite3
-    conn = sqlite3.connect("pr_nexus.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT active_url FROM settings WHERE id = 1")
-    row = cursor.fetchone()
-    conn.close()
-    db_url = row[0] if row and row[0] else ""
-    req_url = req.website_url or db_url or os.getenv("WEBSITE_URL")
-    if not req_email or not req_pw or not req_url:
-        logs.append("> [*] ERROR: Missing Credentials in Env Vars.")
-        return {"status": "error", "logs": logs}
-    logs.append(f"> [*] Requesting URL: {req_url}")
-    scraped_text = scrape_website_text(req_url)
-    logs.append(f"> [*] Analyzing website context via AI...")
-    dynamic_niche = extract_niche_with_ai(client, scraped_text)
-    logs.append(f"> [*] AI defined your Core Expertise as:\n   '{dynamic_niche}'")
-    
-    # 2. FETCH FROM HARO (IMAP)
+# 2. FETCH FROM HARO (IMAP)
     live_feeds, haro_logs = fetch_live_queries_from_haro(req_email, req_pw)
     logs.extend(haro_logs)
     
