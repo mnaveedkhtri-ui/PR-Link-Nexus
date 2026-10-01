@@ -127,7 +127,7 @@ def fetch_live_queries_from_haro(email_addr, app_password):
         email_ids = messages[0].split()
         
         if not email_ids:
-            logs.append("> [📭] No HARO emails found in inbox.")
+            print("> "); logs.append("> [📭] No HARO emails found in inbox.")
             return queries, logs
             
         # Get the most recent HARO email
@@ -170,9 +170,9 @@ def fetch_live_queries_from_haro(email_addr, app_password):
                         except Exception as e:
                             pass
         mail.logout()
-        logs.append(f"> [📥] Extracted {len(queries)} queries from the latest HARO email!")
+        print(f"> "); logs.append(f"> [📥] Extracted {len(queries)} queries from the latest HARO email!")
     except Exception as e:
-        logs.append(f"> [❌] IMAP Error reading HARO: {e}")
+        print(f"> "); logs.append(f"> [❌] IMAP Error reading HARO: {e}")
         
     return queries, logs
 
@@ -207,7 +207,7 @@ def ai_semantic_filter(client, query: str, client_niche: str) -> bool:
 
 def scan_inbox_and_reply(email_addr, app_password, founder_name, website_url, client):
     logs = []
-    logs.append(f"> [📥] Connecting to Gmail IMAP Server...")
+    print(f"> "); logs.append(f"> [📥] Connecting to Gmail IMAP Server...")
     try:
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
         mail.login(email_addr, app_password)
@@ -216,7 +216,7 @@ def scan_inbox_and_reply(email_addr, app_password, founder_name, website_url, cl
         email_ids = messages[0].split()
         
         if not email_ids:
-            logs.append("> [📭] Inbox is empty. No new unread replies found.")
+            print("> "); logs.append("> [📭] Inbox is empty. No new unread replies found.")
             return logs
             
         latest_email_id = email_ids[-1]
@@ -230,20 +230,20 @@ def scan_inbox_and_reply(email_addr, app_password, founder_name, website_url, cl
                 sender = msg.get("From")
                 body = get_text_from_email(msg)
                 
-                logs.append(f"> [📧] New Email Found: {subject}")
+                print(f"> "); logs.append(f"> [📧] New Email Found: {subject}")
                 
                 check_prompt = f"Is the following email a newsletter/spam, or a real human message? Answer ONLY 'SPAM' or 'REAL'.\nSubject: {subject}\nBody: {body[:500]}"
                 is_real = client.chat.completions.create(messages=[{"role": "user", "content": check_prompt}], model="qwen/qwen3.8-27b", temperature=0.1, max_tokens=10).choices[0].message.content.strip().upper()
                 
                 if "SPAM" in is_real:
-                    logs.append("> [🛡️] AI Filter: Discarded as Spam.")
+                    print("> "); logs.append("> [🛡️] AI Filter: Discarded as Spam.")
                     continue
                 
-                logs.append("> [🧠] AI analyzing context and writing reply...")
+                print("> "); logs.append("> [🧠] AI analyzing context and writing reply...")
                 reply_prompt = f"You are {founder_name}, founder of {website_url}. Reply politely to this email from {sender}: '{body[:1000]}'. Sign off as {founder_name}."
                 reply_text = client.chat.completions.create(messages=[{"role": "user", "content": reply_prompt}], model="qwen/qwen3.8-27b", temperature=0.7, max_tokens=250).choices[0].message.content
                 
-                logs.append(f"> [📤] Sending AI Auto-Reply to {sender}...")
+                print(f"> "); logs.append(f"> [📤] Sending AI Auto-Reply to {sender}...")
                 
                 smtp = smtplib.SMTP('smtp.gmail.com', 587)
                 smtp.starttls()
@@ -257,11 +257,11 @@ def scan_inbox_and_reply(email_addr, app_password, founder_name, website_url, cl
                 smtp.quit()
                 
                 log_pitch_to_db(sender, "Reply", subject, reply_text, "REPLIED")
-                logs.append("> [✅] SUCCESS! Reply sent & logged to Database.")
+                print("> "); logs.append("> [✅] SUCCESS! Reply sent & logged to Database.")
                 
         mail.logout()
     except Exception as e:
-        logs.append(f"> [❌] IMAP ERROR: Could not read inbox. {e}")
+        print(f"> "); logs.append(f"> [❌] IMAP ERROR: Could not read inbox. {e}")
     return logs
 
 # ==========================================
@@ -298,13 +298,13 @@ async def run_vip_loop(req: VIPRequest):
     db_url = row[0] if row and row[0] else ""
     req_url = req.website_url or db_url or os.getenv("WEBSITE_URL")
     if not req_email or not req_pw or not req_url:
-        logs.append("> [X] ERROR: Missing Credentials in Env Vars.")
+        print("> "); logs.append("> [X] ERROR: Missing Credentials in Env Vars.")
         return {"status": "error", "logs": logs}
-    logs.append(f"> [🕸️] Requesting URL: {req_url}")
+    print(f"> "); logs.append(f"> [🕸️] Requesting URL: {req_url}")
     scraped_text = scrape_website_text(req_url)
-    logs.append(f"> [🧠] Analyzing website context via AI...")
+    print(f"> "); logs.append(f"> [🧠] Analyzing website context via AI...")
     dynamic_niche = extract_niche_with_ai(client, scraped_text)
-    logs.append(f"> [🎯] AI defined your Core Expertise as:\n   '{dynamic_niche}'")
+    print(f"> "); logs.append(f"> [🎯] AI defined your Core Expertise as:\n   '{dynamic_niche}'")
     
     # 2. FETCH FROM HARO (IMAP)
     live_feeds, haro_logs = fetch_live_queries_from_haro(req_email, req_pw)
@@ -313,7 +313,7 @@ async def run_vip_loop(req: VIPRequest):
     # 3. BATCH PROCESSING ENGINE (To prevent API Rate Limits & Timeouts)
     pitch_count = 0
     if live_feeds:
-        logs.append(f"> [🧠] BATCH PROCESSING {len(live_feeds)} QUERIES IN ONE GO (Speed Optimization)...")
+        print(f"> "); logs.append(f"> [🧠] BATCH PROCESSING {len(live_feeds)} QUERIES IN ONE GO (Speed Optimization)...")
         
         # Prepare a numbered list of all queries
         queries_text = ""
@@ -328,15 +328,15 @@ async def run_vip_loop(req: VIPRequest):
             # Extract numbers from the response
             selected_indices = [int(i.strip()) for i in re.findall(r'\d+', result_str)]
         except Exception as e:
-            logs.append(f"> [❌] Batch filter error: {e}")
+            print(f"> "); logs.append(f"> [❌] Batch filter error: {e}")
             selected_indices = []
             
-        logs.append(f"> [✅] BATCH COMPLETE. AI selected {len(selected_indices)} creative matching queries!")
+        print(f"> "); logs.append(f"> [✅] BATCH COMPLETE. AI selected {len(selected_indices)} creative matching queries!")
         
         for idx in selected_indices[:8]:  # Increased to 8 per run to guarantee 10+ daily pitches across 3 runs
             if idx < len(live_feeds):
                 item = live_feeds[idx]
-                logs.append(f"\n> [+] CREATIVE MATCH: {item['title'][:50]}... Initiating Pitch Generation...")
+                print(f"\n> "); logs.append(f"\n> [+] CREATIVE MATCH: {item['title'][:50]}... Initiating Pitch Generation...")
                 
                 try:
                     system_prompt = f"""
@@ -377,12 +377,12 @@ async def run_vip_loop(req: VIPRequest):
                     server.quit()
                     
                     log_pitch_to_db(item['name'], item['outlet'], item['query'], pitch_text, "PITCH SENT")
-                    logs.append(f"> [✅] SUCCESS! HARO Pitch Delivered to {item['email']} & Logged.")
+                    print(f"> "); logs.append(f"> [✅] SUCCESS! HARO Pitch Delivered to {item['email']} & Logged.")
                     pitch_count += 1
                 except Exception as e:
-                    logs.append(f"> [❌] SMTP ERROR: {e}")
+                    print(f"> "); logs.append(f"> [❌] SMTP ERROR: {e}")
 
-    logs.append(f"\n> [🤖] Phase 1 (Pitching) complete. Total Pitches Sent: {pitch_count}")
+    print(f"\n> "); logs.append(f"\n> [🤖] Phase 1 (Pitching) complete. Total Pitches Sent: {pitch_count}")
     return {"status": "success", "logs": logs}
 
 class ClientSettings(BaseModel):
