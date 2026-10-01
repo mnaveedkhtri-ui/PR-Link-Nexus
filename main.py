@@ -341,7 +341,7 @@ def process_vip_loop(req: VIPRequest):
         for idx, item in enumerate(live_feeds):
             queries_text += f"{idx}. {item['title'][:100]}\n"
             
-        batch_prompt = f"Client Niche: '{dynamic_niche}'. Here are {len(live_feeds)} HARO queries:\n{queries_text}\nCarefully review these queries. Only select a query if the client's niche is a GENUINE and VALUABLE fit. Do not force a connection if it doesn't make sense. Return ONLY a comma-separated list of the numbers (e.g. 0, 5, 12) of up to 8 matching queries. If none are a good fit, return an empty string."
+        batch_prompt = f"Client Niche: '{dynamic_niche}'. Here are {len(live_feeds)} HARO queries:\n{queries_text}\nThe client runs a high-quality multi-category blog covering Tech, Lifestyle, Business, and Health. Identify the top 2 to 3 most relevant queries where the client can provide a genuinely valuable and creative perspective. You must think outside the box to make a high-quality connection, but avoid total spam. Always aim to select at least 1-2 good queries. Return ONLY a comma-separated list of the numbers (e.g. 0, 5, 12)."
         
         try:
             res = client.chat.completions.create(messages=[{"role": "user", "content": batch_prompt}], model="qwen/qwen3.8-27b", temperature=0.3, max_tokens=30)
