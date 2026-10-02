@@ -386,7 +386,7 @@ def process_vip_loop(req: VIPRequest):
                     6. Exactly 2 or 3 sentences total.
                     7. Do NOT use "Hi Journalist" or "I hope this finds you well". Start abruptly with just: "Hey {item['name'].split(' ')[0]},"
                     8. Sign off simply with:
-                    - {req_name}
+                    Best,\n                    {req_name}
                     {req_url}
                     """
                     pitch_text = client.chat.completions.create(
@@ -541,7 +541,7 @@ def debug_crash(req: VIPRequest):
                     6. Exactly 2 or 3 sentences total.
                     7. Do NOT use "Hi Journalist" or "I hope this finds you well". Start abruptly with just: "Hey {item['name'].split(' ')[0]},"
                     8. Sign off simply with:
-                    - {req_name}
+                    Best,\n                    {req_name}
                     {req_url}
                     """
         pitch_text = client.chat.completions.create(
