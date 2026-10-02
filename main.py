@@ -490,6 +490,18 @@ def debug_vip(req: VIPRequest):
         for response_part in msg_data:
             if isinstance(response_part, tuple):
                 msg = email.message_from_bytes(response_part[1])
+                
+                # SPAM PREVENTION: Check if we already processed this exact email
+                import os
+                message_id = str(msg.get("Message-ID"))
+                if os.path.exists("processed_haros.txt"):
+                    with open("processed_haros.txt", "r") as f:
+                        if message_id in f.read():
+                            continue # Skip already processed emails
+                            
+                with open("processed_haros.txt", "a") as f:
+                    f.write(message_id + "\n")
+                    
                 body = get_text_from_email(msg)
                 logs.append(f"> [*] DEBUG: Email Body Length = {len(body)}")
                 blocks = body.split("-----------------------------------")
