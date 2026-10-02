@@ -240,6 +240,13 @@ def scan_inbox_and_reply(email_addr, app_password, founder_name, website_url, cl
                 subject, encoding = decode_header(msg["Subject"])[0]
                 if isinstance(subject, bytes): subject = subject.decode(encoding if encoding else "utf-8")
                 sender = msg.get("From")
+                
+                # SECURITY FILTER: Don't reply to random spam/newsletters
+                sender_lower = str(sender).lower()
+                if "no-reply" in sender_lower or "amazon" in sender_lower or "newsletter" in sender_lower or "support" in sender_lower:
+                    logs.append(f"> [*] Skipped automated/marketing email from {sender}")
+                    continue
+                    
                 body = get_text_from_email(msg)
                 
                 logs.append(f"> [*] New Email Found: {subject}")
@@ -341,13 +348,13 @@ def process_vip_loop(req: VIPRequest):
         for idx, item in enumerate(live_feeds):
             queries_text += f"{idx}. {item['title'][:100]}\n"
             
-        batch_prompt = f"Client Niche: '{dynamic_niche}'. Here are {len(live_feeds)} HARO queries:\n{queries_text}\nThe client runs a high-quality multi-category blog covering Tech, Lifestyle, Business, and Health. Identify the top 2 to 3 most relevant queries where the client can provide a genuinely valuable and creative perspective. You must think outside the box to make a high-quality connection, but avoid total spam. Always aim to select at least 1-2 good queries. Return ONLY a comma-separated list of the numbers (e.g. 0, 5, 12)."
+        batch_prompt = f"Client Niche: '{dynamic_niche}'. Here are {len(live_feeds)} HARO queries:\n{queries_text}\nThe client runs a high-quality multi-category blog covering Tech, Lifestyle, Business, and Health. You MUST select EXACTLY 3 queries from the list that are the closest match, even if they are not perfect fits. Be highly creative in finding a unique angle to connect the client's niche to these 3 queries. DO NOT return an empty list. Return ONLY a comma-separated list of exactly 3 numbers (e.g. 0, 5, 12)."
         
         try:
             res = client.chat.completions.create(messages=[{"role": "user", "content": batch_prompt}], model="qwen/qwen3.8-27b", temperature=0.3, max_tokens=30)
             result_str = res.choices[0].message.content
             # Extract numbers from the response
-            selected_indices = [int(i.strip()) for i in re.findall(r'\d+', result_str)]
+            selected_indices = [int(i.strip()) for i in re.findall(r'\d+', result_str)][:3]
         except Exception as e:
             logs.append(f"> [*] Batch filter error: {e}")
             selected_indices = []
