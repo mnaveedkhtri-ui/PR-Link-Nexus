@@ -139,7 +139,6 @@ def fetch_live_queries_from_haro(email_addr, app_password):
             return queries, logs
             
         found_haro = False
-        import re
         for i in range(1, min(4, len(email_ids) + 1)):
             latest_email_id = email_ids[-i]
             status, msg_data = mail.fetch(latest_email_id, "(RFC822)")
@@ -353,10 +352,12 @@ def process_vip_loop(req: VIPRequest):
         try:
             res = client.chat.completions.create(messages=[{"role": "user", "content": batch_prompt}], model="qwen/qwen3.8-27b", temperature=0.3, max_tokens=30)
             result_str = res.choices[0].message.content
+            log_pitch_to_db('SYSTEM LOG', 'AI Result', result_str, 'LOG', 'LOG')
             # Extract numbers from the response
             selected_indices = [int(i.strip()) for i in re.findall(r'\d+', result_str)][:3]
         except Exception as e:
             logs.append(f"> [*] Batch filter error: {e}")
+            log_pitch_to_db('SYSTEM LOG', 'AI Filter Error', str(e), 'ERROR', 'ERROR')
             selected_indices = []
             
         logs.append(f"> [*] BATCH COMPLETE. AI selected {len(selected_indices)} creative matching queries!")
@@ -373,19 +374,19 @@ def process_vip_loop(req: VIPRequest):
                 
                 try:
                     system_prompt = f"""
-                    You are {req_name}, a busy founder at {req_url}.
+                    You are {req_name}, founder of {req_url}.
                     Your expertise: {dynamic_niche}.
-                    You are emailing a journalist to provide a quick quote for their story.
                     
-                    CRITICAL RULES FOR 100% HUMAN STYLE:
-                    1. Find a creative, unique angle connecting your expertise to their query.
-                    2. Write like a real, busy person. Extremely conversational and casual.
-                    3. Maximum 3 sentences total. Keep it punchy.
-                    4. USE LINE BREAKS (paragraphs) between sentences so it's easy to read.
-                    5. Start with "Hi {item['name']},".
-                    6. Sign off simply with:
-                    Best,
-                    {req_name}
+                    CRITICAL RULES TO BYPASS PANGRAM AI DETECTION:
+                    1. The journalist is using an AI detector. You MUST write this so it flags as 100% human.
+                    2. Maximize "burstiness" (mix very short 3-word sentences with one longer one).
+                    3. NEVER use AI buzzwords (delve, crucial, vital, landscape, ensure, moreover, additionally).
+                    4. Cut the wind-up. Get straight to the substance. Lead with a specific case, a hard number, or a contrarian view you'd defend.
+                    5. Sound like you are typing quickly on an iPhone. Use casual contractions (I'm, here's, doesn't).
+                    6. Exactly 2 or 3 sentences total.
+                    7. Do NOT use "Hi Journalist" or "I hope this finds you well". Start abruptly with just: "Hey {item['name'].split(' ')[0]},"
+                    8. Sign off simply with:
+                    - {req_name}
                     {req_url}
                     """
                     pitch_text = client.chat.completions.create(
@@ -393,7 +394,6 @@ def process_vip_loop(req: VIPRequest):
                         model="qwen/qwen3.8-27b", temperature=0.7, max_tokens=250
                     ).choices[0].message.content
                     
-                    import re
                     match = re.search(r'Summary:\s*(.+?)(?:\r|\n|$)', item['query'])
                     if match:
                         clean_summary = match.group(1).strip()[:60]
@@ -529,21 +529,21 @@ def debug_crash(req: VIPRequest):
         item = live_feeds[0]
         dynamic_niche = "Test Niche"
         system_prompt = f"""
-        You are {req_name}, a busy founder at {req_url}.
-        Your expertise: {dynamic_niche}.
-        You are emailing a journalist to provide a quick quote for their story.
-        
-        CRITICAL RULES FOR 100% HUMAN STYLE:
-        1. Find a creative, unique angle connecting your expertise to their query.
-        2. Write like a real, busy person. Extremely conversational and casual.
-        3. Maximum 3 sentences total. Keep it punchy.
-        4. USE LINE BREAKS (paragraphs) between sentences so it's easy to read.
-        5. Start with "Hi {item['name']},".
-        6. Sign off simply with:
-        Best,
-        {req_name}
-        {req_url}
-        """
+                    You are {req_name}, founder of {req_url}.
+                    Your expertise: {dynamic_niche}.
+                    
+                    CRITICAL RULES TO BYPASS PANGRAM AI DETECTION:
+                    1. The journalist is using an AI detector. You MUST write this so it flags as 100% human.
+                    2. Maximize "burstiness" (mix very short 3-word sentences with one longer one).
+                    3. NEVER use AI buzzwords (delve, crucial, vital, landscape, ensure, moreover, additionally).
+                    4. Cut the wind-up. Get straight to the substance. Lead with a specific case, a hard number, or a contrarian view you'd defend.
+                    5. Sound like you are typing quickly on an iPhone. Use casual contractions (I'm, here's, doesn't).
+                    6. Exactly 2 or 3 sentences total.
+                    7. Do NOT use "Hi Journalist" or "I hope this finds you well". Start abruptly with just: "Hey {item['name'].split(' ')[0]},"
+                    8. Sign off simply with:
+                    - {req_name}
+                    {req_url}
+                    """
         pitch_text = client.chat.completions.create(
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Journalist Query: \"{item['query']}\"\nWrite the email."}],
             model="qwen/qwen3.8-27b", temperature=0.7, max_tokens=250
