@@ -166,7 +166,7 @@ def fetch_live_queries_from_haro(email_addr, app_password):
                                 emails_in_block = re.findall(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', block)
                                 target_email = emails_in_block[0] if emails_in_block else None
                                 
-                                if target_email and len(q_text) > 50:
+                                if target_email and len(q_text) > 50 and "No AI Pitches Considered" not in q_text and "No AI Pitches Considered" not in block:
                                     queries.append({
                                         "title": q_text[:100].replace("\n", " "),
                                         "outlet": outlet,
