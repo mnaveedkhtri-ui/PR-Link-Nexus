@@ -164,7 +164,13 @@ def fetch_live_queries_from_haro(email_addr, app_password):
                             if "Email:" in block or "@" in block or "Query:" in block or len(block) > 100:
                                 q_text = block[:1000].strip()
                                 emails_in_block = re.findall(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', block)
-                                target_email = emails_in_block[0] if emails_in_block else None
+                                target_email = None
+                                for e in emails_in_block:
+                                    bad_prefixes = ['spam', 'noreply', 'no-reply', 'support', 'info', 'admin', 'hello', 'marketing', 'newsletter']
+                                    is_bad = any(e.lower().startswith(b + '@') for b in bad_prefixes)
+                                    if not is_bad and e.lower() != email_addr.lower() and 'haro' not in e.lower() and 'connectively' not in e.lower():
+                                        target_email = e
+                                        break
                                 
                                 if target_email and len(q_text) > 50 and "No AI Pitches Considered" not in q_text and "No AI Pitches Considered" not in block:
                                     queries.append({
@@ -242,7 +248,7 @@ def scan_inbox_and_reply(email_addr, app_password, founder_name, website_url, cl
                 
                 # SECURITY FILTER: Don't reply to random spam/newsletters
                 sender_lower = str(sender).lower()
-                if "no-reply" in sender_lower or "amazon" in sender_lower or "newsletter" in sender_lower or "support" in sender_lower:
+                if email_addr.lower() in sender_lower or "no-reply" in sender_lower or "amazon" in sender_lower or "newsletter" in sender_lower or "support" in sender_lower:
                     logs.append(f"> [*] Skipped automated/marketing email from {sender}")
                     continue
                     
